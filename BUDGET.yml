@@ -1,0 +1,11 @@
+monthly_budget_usd: 50
+thresholds:
+  warning_percent: 70
+  emergency_percent: 90
+providers:
+  github_actions:
+    enabled: true
+  anthropic:
+    enabled: false
+  firebase:
+    enabled: false
