@@ -1,51 +1,39 @@
 name: Deploy GitHub Pages
 
-# Deploy dashboard to GitHub Pages
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
-  workflow_dispatch:  # Manual trigger
+    - cron: '0 */6 * * *'  # 任意（今まで通り定期実行したい場合）
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  generate-data:
-    runs-on: ubuntu-latest
+  generate:
     name: Generate dashboard data
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 20
 
       - name: Install Dependencies
         run: npm ci
 
       - name: Generate Dashboard Data
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PROJECT_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_PROJECT_NUMBER: ${{ vars.GITHUB_PROJECT_NUMBER || '1' }}
-        run: |
-          npx tsx scripts/generate-dashboard-data.ts
+          GITHUB_PROJECT_NUMBER: 1
+        run: npx tsx scripts/generate-dashboard-data.ts
 
       - name: Upload Dashboard Data
         uses: actions/upload-artifact@v4
@@ -54,15 +42,11 @@ jobs:
           path: docs/dashboard-data.json
 
   deploy:
-    needs: generate-data
-    runs-on: ubuntu-latest
     name: Deploy to GitHub Pages
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    needs: generate
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Download Dashboard Data
         uses: actions/download-artifact@v4
@@ -72,22 +56,14 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
+        with:
+          enablement: true  # ← これで未有効でも自動で有効化
 
-      - name: Upload artifact
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'docs'
+          path: docs  # ← 公開する中身（今回 docs/ 配下）
 
-      - name: Deploy to GitHub Pages
+      - name: Deploy to Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
-      - name: Summary
-        run: |
-          echo "### 🚀 Dashboard Deployed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✓ Dashboard successfully deployed to GitHub Pages" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**URL**: ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "_Dashboard data will auto-update every 6 hours_" >> $GITHUB_STEP_SUMMARY
