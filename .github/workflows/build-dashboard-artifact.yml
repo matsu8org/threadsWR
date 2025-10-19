@@ -1,0 +1,69 @@
+name: Build dashboard data (artifact only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+  schedule:
+    # UTC で 0,6,12,18 時に実行（JST: 09:00 / 15:00 / 21:00 / 03:00）
+    - cron: '0 */6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}@${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  build-and-upload:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      # プロジェクト差異に強いビルド判定（build:dashboard-data があれば優先）
+      - name: Build dashboard-data.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npm run -s | grep -qE '^\s*build:dashboard-data'; then
+            npm run build:dashboard-data
+          elif npm run -s | grep -qE '^\s*build'; then
+            npm run build
+          else
+            echo "package.json に build:dashboard-data も build も見つかりません。" >&2
+            exit 1
+          fi
+
+      - name: Verify artifact exists
+        run: |
+          test -f docs/dashboard-data.json || {
+            echo "docs/dashboard-data.json が見つかりません。ビルドスクリプトを確認してください。" >&2
+            exit 1
+          }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-data
+          path: docs/dashboard-data.json
+          retention-days: 14
