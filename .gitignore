@@ -173,3 +173,4 @@ yarn-error.log*
 # local diff artifacts
 README.ours.md
 README.theirs.md
+/docs/dashboard-data.json
