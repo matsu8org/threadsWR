@@ -4,11 +4,14 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - '.github/**'
+    # ← YAML自身やgeneratorを触ったpushで必ず走るように、明示的に含めます
+    paths:
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/build-dashboard-artifact.yml"
   schedule:
-    # UTC で 0,6,12,18 時に実行（JST: 09:00 / 15:00 / 21:00 / 03:00）
+    # UTCで6時間おき（JST: 09/15/21/03）
     - cron: '0 */6 * * *'
 
 permissions:
@@ -40,24 +43,14 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      # プロジェクト差異に強いビルド判定（build:dashboard-data があれば優先）
+      # 決定打：常に ts を直接実行（npx tsx）
       - name: Build dashboard-data.json
-        shell: bash
-        run: |
-          set -euo pipefail
-          if npm run -s | grep -qE '^\s*build:dashboard-data'; then
-            npm run build:dashboard-data
-          elif npm run -s | grep -qE '^\s*build'; then
-            npm run build
-          else
-            echo "package.json に build:dashboard-data も build も見つかりません。" >&2
-            exit 1
-          fi
+        run: npx -y tsx scripts/generate-dashboard-data.ts
 
       - name: Verify artifact exists
         run: |
           test -f docs/dashboard-data.json || {
-            echo "docs/dashboard-data.json が見つかりません。ビルドスクリプトを確認してください。" >&2
+            echo "docs/dashboard-data.json が見つかりません。スクリプトを確認してください。" >&2
             exit 1
           }
 
