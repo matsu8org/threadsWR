@@ -1,14 +1,84 @@
+// scripts/generate-dashboard-data.ts
+// 1) .env / .env.local ‚ğ“Ç‚İ‚Şi‘¶İ‚·‚ê‚Îj¦CI‚Å‚ÍSecrets‚ÌŠÂ‹«•Ï”‚ª—Dæ‚³‚ê‚é
+import 'dotenv/config';
+
 import { mkdirSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
+import { Octokit } from '@octokit/rest';
 
-const outDir = resolve('docs');           // Pages ã®é™çš„å‡ºåŠ›å…ˆã«åˆã‚ã›ã‚‹ã€‚docs/ ã‚’ä½¿ã†ãªã‚‰ 'docs'
+const outDir = resolve('docs');
 mkdirSync(outDir, { recursive: true });
 
+// === Octokit ƒZƒbƒgƒAƒbƒv ===
+const token = process.env.GITHUB_TOKEN || undefined; // –¢İ’è‚Å‚àOKiƒŒ[ƒg‚ÍŒµ‚µ‚ßj
+const repoFull = process.env.GITHUB_REPOSITORY ?? 'matsu8org/threadsWR';
+const [owner, repo] = repoFull.split('/');
+const octokit = token ? new Octokit({ auth: token }) : new Octokit();
+
+// ŒŸõŒ”itotal_countj‚¾‚¯‚ª—~‚µ‚¢‚Æ‚«‚ÌŒy—Êƒwƒ‹ƒpi”ñ„§API‚ğg‚í‚È‚¢j
+async function searchCount(q: string): Promise<number> {
+  const res = await octokit.request('GET /search/issues', {
+    q,
+    per_page: 1, // Œ”‚Ì‚İ—~‚µ‚¢‚Ì‚ÅÅ¬
+  });
+  return res.data.total_count ?? 0;
+}
+
+async function fetchMetrics() {
+  const repoQ = `repo:${owner}/${repo}`;
+
+  // 1) Œ»İ‚ÌƒI[ƒvƒ“Œ”
+  const issuesOpen = await searchCount(`${repoQ} is:issue is:open`);
+  const prsOpen    = await searchCount(`${repoQ} is:pr is:open`);
+
+  // 2) ’¼‹ß7“ú‚Ì“®‚«
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const issuesOpened7d = await searchCount(`${repoQ} is:issue created:>=${sevenDaysAgo}`);
+  const issuesClosed7d = await searchCount(`${repoQ} is:issue closed:>=${sevenDaysAgo}`);
+  const prsOpened7d    = await searchCount(`${repoQ} is:pr created:>=${sevenDaysAgo}`);
+  const prsMerged7d    = await searchCount(`${repoQ} is:pr is:merged merged:>=${sevenDaysAgo}`);
+
+  // 3) ƒŠƒ|î•ñiƒXƒ^[/ƒtƒH[ƒN“™j
+  const repoInfo = (await octokit.repos.get({ owner, repo })).data;
+  const {
+    stargazers_count: stars,
+    forks_count: forks,
+    watchers_count: watchers,
+    open_issues_count,
+  } = repoInfo;
+
+  // 4) ’¼‹ßƒ[ƒNƒtƒ[Àsi‚´‚Á‚­‚è¬Œ÷/¸”sj
+  const runs = (await octokit.actions.listWorkflowRunsForRepo({
+    owner, repo, per_page: 10,
+  })).data.workflow_runs;
+  const ciLast10 = {
+    success: runs.filter(r => r.conclusion === 'success').length,
+    failure: runs.filter(r => r.conclusion === 'failure').length,
+  };
+
+  return {
+    issuesOpen,
+    prsOpen,
+    issuesOpened7d,
+    issuesClosed7d,
+    prsOpened7d,
+    prsMerged7d,
+    stars,
+    forks,
+    watchers,
+    repoOpenIssuesField: open_issues_count, // Issue+PR¬İ‚ÌQlƒtƒB[ƒ‹ƒhiGitHubWŒvj
+    ciLast10,
+  };
+}
+
+const metrics = await fetchMetrics();
+
 const data = {
-  repo: process.env.GITHUB_REPOSITORY ?? 'unknown',
+  repo: repoFull,
   generatedAt: new Date().toISOString(),
-  metrics: { issuesOpen: 0, prsOpen: 0 }    // ã¾ãšã¯ãƒ€ãƒŸãƒ¼
+  metrics,
 };
 
-writeFileSync(resolve(outDir, 'dashboard-data.json'), JSON.stringify(data, null, 2));
-console.log(`Generated ${resolve(outDir, 'dashboard-data.json')}`);
+const outFile = resolve(outDir, 'dashboard-data.json');
+writeFileSync(outFile, JSON.stringify(data, null, 2));
+console.log(`Generated ${outFile}`);
