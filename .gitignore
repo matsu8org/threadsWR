@@ -174,3 +174,7 @@ yarn-error.log*
 README.ours.md
 README.theirs.md
 /docs/dashboard-data.json
+
+# local secrets
+.env
+.env.local
